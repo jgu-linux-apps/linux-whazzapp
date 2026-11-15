@@ -5,6 +5,9 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const photos = require('./photos');
+const { Notifier } = require('./notifier');
+
+const APP_TITLE = 'Linux WhazzApp';   // name shown to people (the package, command and data folder stay linux-whazzapp)
 
 const WA_URL = 'https://web.whatsapp.com/';
 // WhatsApp Web odrzuca "Electron" w UA, więc udajemy zwykłego Chrome.
@@ -176,7 +179,7 @@ function showAbout() {
     .resize({ width: 96, height: 96 });
   const opts = {
     type: 'info',
-    title: 'O programie linux-whazzapp',
+    title: `O programie ${APP_TITLE}`,
     message: `linux-whazzapp ${app.getVersion()}`,
     detail: 'Created by: JGu\nSupported by Claude\n\nNieoficjalny klient WhatsApp Web dla Ubuntu.',
     icon,
@@ -280,7 +283,7 @@ function buildTray() {
 function refreshTray() {
   if (!tray) return;
   tray.setImage(trayImage());
-  tray.setToolTip(unread > 0 ? `linux-whazzapp — nieprzeczytane: ${unread}` : 'linux-whazzapp');
+  tray.setToolTip(unread > 0 ? `${APP_TITLE} — nieprzeczytane: ${unread}` : APP_TITLE);
   const toggle = (key, after) => (item) => { settings[key] = item.checked; saveSettings(); after && after(); };
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: win && win.isVisible() ? 'Ukryj okno' : 'Pokaż okno', click: toggleWindow },
@@ -361,7 +364,7 @@ function makeWindow({ bounds, show, maximized } = {}) {
   win = new BrowserWindow({
     width: 1200, height: 800, minWidth: 700, minHeight: 500, ...(bounds || {}),
     show: false, autoHideMenuBar: true,
-    icon: asset('icon.png'), title: 'linux-whazzapp',
+    icon: asset('icon.png'), title: APP_TITLE,
     backgroundColor: bgColor(),
     ...(winFramed ? {} : { titleBarStyle: 'hidden', titleBarOverlay: overlay() }),
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
@@ -392,7 +395,7 @@ function makeWindow({ bounds, show, maximized } = {}) {
   });
   // tytuł okna = tytuł WhatsAppa (jak dotąd), nie paska
   win.on('page-title-updated', (e) => e.preventDefault());
-  win.setTitle(view.webContents.getTitle() || 'linux-whazzapp');
+  win.setTitle(view.webContents.getTitle() || APP_TITLE);
   win.once('ready-to-show', () => {
     if (maximized) win.maximize();
     if (show) { win.show(); view.webContents.focus(); }
@@ -466,6 +469,14 @@ function createWindow() {
     const msg = (e && typeof e.message === 'string') ? e.message
       : (typeof args[0] === 'object' && args[0] ? args[0].message : args[1]);
     if (msg === '__WHAZZAPP_PHOTOS__') { onPhotosRequest(); return; }
+    if (typeof msg === 'string' && msg.startsWith('__WHAZZAPP_NOTIFY__')) {
+      try { onNotify(JSON.parse(msg.slice('__WHAZZAPP_NOTIFY__'.length))); } catch {}
+      return;
+    }
+    if (typeof msg === 'string' && msg.startsWith('__WHAZZAPP_NOTIFY_CLOSE__')) {
+      try { onNotifyClose(JSON.parse(msg.slice('__WHAZZAPP_NOTIFY_CLOSE__'.length)).key); } catch {}
+      return;
+    }
     if (typeof msg !== 'string' || !msg.startsWith('__WHAZZAPP_NOTIF_CLICK__')) return;
     let info = {};
     try { info = JSON.parse(msg.slice('__WHAZZAPP_NOTIF_CLICK__'.length) || '{}'); } catch {}
@@ -498,6 +509,95 @@ function createWindow() {
   });
 }
 
+// ---------- notifications (D-Bus, see notifier.js) ----------
+let notifier = null;
+const keyToId = new Map(), idToKey = new Map(), tagToKey = new Map(), keyIcon = new Map();
+const closedEarly = new Set();   // closed by the page before GNOME returned the number
+const iconDir = path.join(app.getPath('userData'), 'notify-icons');
+
+function pageCall(fn, key) {
+  if (view && !view.webContents.isDestroyed()) {
+    view.webContents.executeJavaScript(`window.${fn} && window.${fn}(${JSON.stringify(key)})`).catch(() => {});
+  }
+}
+
+function forget(key) {
+  const id = keyToId.get(key);
+  keyToId.delete(key);
+  if (id && idToKey.get(id) === key) idToKey.delete(id);
+  for (const [t, k] of tagToKey) if (k === key) tagToKey.delete(t);
+  const f = keyIcon.get(key);
+  keyIcon.delete(key);
+  if (f) fs.promises.unlink(f).catch(() => {});
+}
+
+async function saveIcon(info) {
+  let buf = null, ext = 'png';
+  const m = /^data:image\/(png|jpe?g|webp);base64,(.+)$/.exec(info.iconData || '');
+  if (m) { buf = Buffer.from(m[2], 'base64'); ext = m[1] === 'jpeg' ? 'jpg' : m[1]; }
+  else if (info.icon && view) {
+    const r = await view.webContents.session.fetch(info.icon);
+    if (r.ok && /^image\//.test(r.headers.get('content-type') || '')) {
+      buf = Buffer.from(await r.arrayBuffer());
+      ext = (r.headers.get('content-type').split('/')[1] || 'png').replace('jpeg', 'jpg').split(';')[0];
+    }
+  }
+  if (!buf || buf.length > 2e6) return '';
+  await fs.promises.mkdir(iconDir, { recursive: true });
+  const f = path.join(iconDir, `${info.key.replace(/[^\w-]/g, '')}.${ext}`);
+  await fs.promises.writeFile(f, buf);
+  keyIcon.set(info.key, f);
+  return f;
+}
+
+async function onNotify(info) {
+  if (!notifier || !settings.notifications || !info || !info.key) return;
+  let image = '';
+  try { image = await saveIcon(info); } catch {}
+  // the same tag (one chat) replaces the previous notification instead of adding another
+  const prev = info.tag ? tagToKey.get(info.tag) : null;
+  const replaceId = prev ? (keyToId.get(prev) || 0) : 0;
+  if (prev) { forget(prev); pageCall('__whazzappNotifClosed', prev); }
+  const id = await notifier.show({ title: info.title, body: info.body, image, replaceId });
+  if (!id) return;
+  if (closedEarly.delete(info.key)) { notifier.close(id); forget(info.key); return; }
+  keyToId.set(info.key, id);
+  idToKey.set(id, info.key);
+  if (info.tag) tagToKey.set(info.tag, info.key);
+}
+
+function onNotifyClose(key) {
+  const id = keyToId.get(key);
+  if (!id) { closedEarly.add(key); setTimeout(() => closedEarly.delete(key), 10000); return; }
+  notifier.close(id);
+  forget(key);
+}
+
+function startNotifier() {
+  notifier = new Notifier({
+    appName: APP_TITLE, desktopEntry: 'linux-whazzapp', icon: 'linux-whazzapp', actionLabel: 'Otwórz',
+    onAction: (id) => {
+      const key = idToKey.get(id);
+      showWindow();
+      if (key) pageCall('__whazzappNotifClick', key);   // WhatsApp opens the chat (its own onclick)
+      notifier.close(id);                              // GNOME keeps clicked notifications: remove it
+      if (key) forget(key);
+    },
+    onClosed: (id) => {
+      const key = idToKey.get(id);
+      if (key) { pageCall('__whazzappNotifClosed', key); forget(key); }
+    },
+  });
+  notifier.start();
+  fs.promises.rm(iconDir, { recursive: true, force: true }).catch(() => {});
+}
+
+app.on('before-quit', () => {
+  if (!notifier) return;
+  for (const id of keyToId.values()) notifier.close(id);
+  notifier.stop();
+});
+
 // ---------- start ----------
 app.whenReady().then(() => {
   const ses = session.fromPartition('persist:whatsapp');
@@ -509,6 +609,7 @@ app.whenReady().then(() => {
     cb(permission === 'notifications' ? settings.notifications : ok.includes(permission));
   });
 
+  startNotifier();
   photos.cleanupOld();
   photosApp = (() => { try { return photos.detect(); } catch { return null; } })();
   createWindow();
