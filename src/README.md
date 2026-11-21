@@ -6,7 +6,7 @@ with its own icon, a system tray icon and an automatic light/dark theme.
 Created by: JGu  
 Supported by Claude
 
-**Version:** 1.3.13 · **License:** Freeware License (No Modifications), see `LICENSE` · **Platform:** Ubuntu (GNOME), x86_64
+**Version:** 1.3.14 · **License:** Freeware License (No Modifications), see `LICENSE` · **Platform:** Ubuntu (GNOME), x86_64
 
 > This project is not affiliated with WhatsApp or Meta. The icon is original and contains
 > no WhatsApp logo. The app loads the official `web.whatsapp.com` site, so it works as long
@@ -177,6 +177,7 @@ User data: `~/.config/linux-whazzapp` (session and `settings.json`).
 
 ## Version history
 
+- **1.3.14** Aurora title bar looks like the rest of the series (Linux iMessage): the window gets the Aurora background (dark: two soft cyan and violet glows on #0c0e1a, light: lavender to blue to pink gradient) and the bar is almost transparent with a thin bottom line, so the cyan glow shows through it. The System theme is unchanged.
 - **1.3.13** notifications disappear from the GNOME notification list after a click (and when the chat is read or nothing is unread any more): the app now shows them itself through D-Bus and closes them, because GNOME kept clicked Chromium notifications in the list. GNOME shows the name "Linux WhazzApp" in notifications, the dock and the app grid instead of "linux-whazzapp". The dark tray icon has no gradient rim any more, like the app icon.
 - **1.3.12** the dark app icon has no gradient rim any more, the same as the other apps of the series (the tray icon keeps it, for contrast on the dark top bar).
 - **1.3.11** packaging fix: the 1.3.10 package left the app icons (`assets/icon.png`, `assets/icon-dark.png`) out of the app, so the window had no icon and the app could not switch the dock icon itself. No other changes.

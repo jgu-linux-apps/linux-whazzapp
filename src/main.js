@@ -80,8 +80,9 @@ async function applyAurora() {
 const TB_H = 34;
 const framed = () => settings.theme !== 'aurora';
 const overlay = () => (nativeTheme.shouldUseDarkColors
-  ? { color: '#0e1020', symbolColor: '#ecebff', height: TB_H }
-  : { color: '#f1edff', symbolColor: '#1f1a3a', height: TB_H });
+  // solid colours = the bar's look at the top-right corner (#0c0e1a + 4% white, light gradient + 58% white)
+  ? { color: '#161824', symbolColor: '#ecebff', height: TB_H }
+  : { color: '#f8fbff', symbolColor: '#1f1a3a', height: TB_H });
 
 // ---------- ikona przy zamkniętej aplikacji ----------
 // icon-watch.sh (obok programu) podmienia ikonę w docku/menu przy zmianie jasny/ciemny, także gdy

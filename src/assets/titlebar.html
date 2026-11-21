@@ -7,13 +7,17 @@
      Only the 34 px bar may be a drag region: drag regions apply to the whole window, also under the
      WhatsApp view, so a drag area any taller would swallow every click in WhatsApp. */
   html, body { margin: 0; height: 100%; overflow: hidden; }
-  body { background: #f1edff; color: #1f1a3a; user-select: none; cursor: default;
-         font: 600 13px Ubuntu, "Noto Sans", sans-serif; }
+  /* Same look as the series' shared aurora.py: the whole window gets the Aurora background (the bar shows
+     its top slice, so the cyan glow from the top-left shines through) and the bar itself is almost clear. */
+  body { background: linear-gradient(135deg, #f6f2ff, #eef8ff 55%, #fff4f8); color: #1f1a3a;
+         user-select: none; cursor: default; font: 600 13px Ubuntu, "Noto Sans", sans-serif; }
   .bar { -webkit-app-region: drag; height: 34px; display: flex; align-items: center; justify-content: center; box-sizing: border-box;
-         border-bottom: 1px solid #e2dcfa; }
+         background: rgba(255,255,255,0.58); box-shadow: inset 0 -1px rgba(124,92,255,0.12); }
   @media (prefers-color-scheme: dark) {
-    body { background: #0e1020; color: #ecebff; }
-    .bar { border-bottom-color: #252a45; }
+    body { color: #ecebff; background:
+      radial-gradient(ellipse at 12% -5%, rgba(34,211,238,0.20), transparent 55%),
+      radial-gradient(ellipse at 100% 105%, rgba(168,85,247,0.24), transparent 55%), #0c0e1a; }
+    .bar { background: rgba(255,255,255,0.04); box-shadow: inset 0 -1px rgba(255,255,255,0.07); }
   }
 </style></head>
 <body><div class="bar">Linux WhazzApp</div>
